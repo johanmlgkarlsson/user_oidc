@@ -76,13 +76,31 @@ class DiscoveryService {
 		if ($lastJwksRefresh !== '' && (int) $lastJwksRefresh > time() - self::INVALIDATE_JWKS_CACHE_AFTER_SECONDS) {
 			$rawJwks = $this->providerService->getSetting($provider->getId(), ProviderService::SETTING_JWKS_CACHE);
 			$rawJwks = json_decode($rawJwks, true);
-			$jwks = JWK::parseKeySet($rawJwks);
+			// Microsoft Azure (and others?) do not include the alg parameter in the JWK
+			if (empty($rawJwks['keys'][0]['alg'])) {
+				// todo: should this be cached?
+				$discovery = $this->obtainDiscovery($provider);
+				if(!empty($discovery['id_token_signing_alg_values_supported'][0])) {
+					$jwks = JWK::parseKeySet($rawJwks, $discovery['id_token_signing_alg_values_supported'][0]);
+				} else {
+					// todo: this will probably fail
+					$jwks = JWK::parseKeySet($rawJwks);
+				}
+			} else {
+				$jwks = JWK::parseKeySet($rawJwks);
+			}
 		} else {
 			$discovery = $this->obtainDiscovery($provider);
 			$client = $this->clientService->newClient();
 			$responseBody = $client->get($discovery['jwks_uri'])->getBody();
 			$result = json_decode($responseBody, true);
-			$jwks = JWK::parseKeySet($result);
+
+			// Microsoft Azure (and others?) do not include the alg parameter in the JWK
+			if (empty($result['keys'][0]['alg']) && !empty($discovery['id_token_signing_alg_values_supported'][0])) {
+				$jwks = JWK::parseKeySet($result, $discovery['id_token_signing_alg_values_supported'][0]);
+			} else {
+				$jwks = JWK::parseKeySet($result);
+			}
 			// cache jwks
 			$this->providerService->setSetting($provider->getId(), ProviderService::SETTING_JWKS_CACHE, $responseBody);
 			$this->providerService->setSetting($provider->getId(), ProviderService::SETTING_JWKS_CACHE_TIMESTAMP, strval(time()));
