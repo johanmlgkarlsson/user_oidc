@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+use OCA\UserOIDC\Db\ProviderMapper;
 use OCA\UserOIDC\Db\User;
 use OCA\UserOIDC\Db\UserMapper;
 use OCA\UserOIDC\Service\LocalIdService;
@@ -23,6 +24,7 @@ use OCP\ISession;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\L10N\IFactory;
+use OCP\Security\ICrypto;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -71,6 +73,12 @@ class ProvisioningServiceTest extends TestCase {
 	 */
 	private $l10nFactory;
 
+	/** @var ProviderMapper | MockObject */
+	private $providerMapper;
+
+	/** @var ICrypto | MockObject */
+	private $crypto;
+
 	public function setUp(): void {
 		parent::setUp();
 		$this->idService = $this->createMock(LocalIdService::class);
@@ -86,6 +94,8 @@ class ProvisioningServiceTest extends TestCase {
 		$this->avatarManager = $this->createMock(IAvatarManager::class);
 		$this->session = $this->createMock(ISession::class);
 		$this->l10nFactory = $this->createMock(IFactory::class);
+		$this->providerMapper = $this->createMock(ProviderMapper::class);
+		$this->crypto = $this->createMock(ICrypto::class);
 
 		$this->provisioningService = new ProvisioningService(
 			$this->idService,
@@ -101,6 +111,8 @@ class ProvisioningServiceTest extends TestCase {
 			$this->config,
 			$this->session,
 			$this->l10nFactory,
+			$this->providerMapper,
+			$this->crypto,
 		);
 	}
 
@@ -358,6 +370,7 @@ class ProvisioningServiceTest extends TestCase {
 				[
 					[$providerId, ProviderService::SETTING_GROUP_WHITELIST_REGEX, '', $group_whitelist],
 					[$providerId, ProviderService::SETTING_MAPPING_GROUPS, 'groups', 'groups'],
+					[$providerId, ProviderService::SETTING_AZURE_GROUP_NAMES, '0', '0'],
 				]
 			));
 
