@@ -88,6 +88,7 @@ class ProviderServiceTest extends TestCase {
 					'extraClaims' => '1',
 					'providerBasedId' => true,
 					'groupProvisioning' => true,
+					'azureGroupNames' => true,
 				],
 			],
 			[
@@ -109,6 +110,7 @@ class ProviderServiceTest extends TestCase {
 					'extraClaims' => '1',
 					'providerBasedId' => true,
 					'groupProvisioning' => true,
+					'azureGroupNames' => true,
 				],
 			],
 		], $this->providerService->getProvidersWithSettings());
@@ -128,6 +130,7 @@ class ProviderServiceTest extends TestCase {
 			'extraClaims' => 'claim1 claim2',
 			'providerBasedId' => false,
 			'groupProvisioning' => true,
+			'azureGroupNames' => false,
 		];
 		$this->config->expects(self::any())
 			->method('getAppValue')
@@ -144,6 +147,7 @@ class ProviderServiceTest extends TestCase {
 				[Application::APP_ID, 'provider-1-' . ProviderService::SETTING_EXTRA_CLAIMS, '', 'claim1 claim2'],
 				[Application::APP_ID, 'provider-1-' . ProviderService::SETTING_PROVIDER_BASED_ID, '', '0'],
 				[Application::APP_ID, 'provider-1-' . ProviderService::SETTING_GROUP_PROVISIONING, '', '1'],
+				[Application::APP_ID, 'provider-1-' . ProviderService::SETTING_AZURE_GROUP_NAMES, '', '0'],
 			]);
 
 		Assert::assertEquals(

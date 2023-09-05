@@ -48,6 +48,7 @@ class ProviderService {
 	public const SETTING_JWKS_CACHE_TIMESTAMP = 'jwksCacheTimestamp';
 	public const SETTING_PROVIDER_BASED_ID = 'providerBasedId';
 	public const SETTING_GROUP_PROVISIONING = 'groupProvisioning';
+	public const SETTING_AZURE_GROUP_NAMES = 'azureGroupNames';
 
 	private const BOOLEAN_SETTINGS = array(
 		self::SETTING_GROUP_PROVISIONING,
@@ -55,7 +56,8 @@ class ProviderService {
 		self::SETTING_BEARER_PROVISIONING,
 		self::SETTING_UNIQUE_UID,
 		self::SETTING_CHECK_BEARER,
-		self::SETTING_SEND_ID_TOKEN_HINT
+		self::SETTING_SEND_ID_TOKEN_HINT,
+		self::SETTING_AZURE_GROUP_NAMES,
 	);
 
 
@@ -147,7 +149,8 @@ class ProviderService {
 			self::SETTING_BEARER_PROVISIONING,
 			self::SETTING_EXTRA_CLAIMS,
 			self::SETTING_PROVIDER_BASED_ID,
-			self::SETTING_GROUP_PROVISIONING
+			self::SETTING_GROUP_PROVISIONING,
+			self::SETTING_AZURE_GROUP_NAMES
 		];
 	}
 

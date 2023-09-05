@@ -2,14 +2,17 @@
 
 namespace OCA\UserOIDC\Service;
 
+use OCA\UserOIDC\Db\ProviderMapper;
 use OCA\UserOIDC\Db\UserMapper;
 use OCA\UserOIDC\Event\AttributeMappedEvent;
 use OCP\DB\Exception;
 use OCP\EventDispatcher\IEventDispatcher;
+use OCP\Http\Client\IClientService;
 use OCP\IGroupManager;
 use OCP\ILogger;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Security\ICrypto;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use OCP\User\Events\UserChangedEvent;
@@ -33,25 +36,40 @@ class ProvisioningService {
 	/** @var ILogger */
 	private $logger;
 
+	/** @var ICrypto */
+	private $crypto;
+
+	/** @var IClientService */
+	private $clientService;
+
 	/** @var ProviderService */
 	private $providerService;
+
+	/** @var ProviderMapper */
+	private $providerMapper;
 
 	public function __construct(
 		LocalIdService   $idService,
 		ProviderService  $providerService,
+		ProviderMapper   $providerMapper,
 		UserMapper       $userMapper,
 		IUserManager     $userManager,
 		IGroupManager    $groupManager,
 		IEventDispatcher $eventDispatcher,
+		ICrypto          $crypto,
+		IClientService $clientService,
 		ILogger          $logger
 	) {
 		$this->idService = $idService;
 		$this->providerService = $providerService;
+		$this->providerMapper = $providerMapper;
 		$this->userMapper = $userMapper;
 		$this->userManager = $userManager;
 		$this->groupManager = $groupManager;
 		$this->eventDispatcher = $eventDispatcher;
 		$this->logger = $logger;
+		$this->crypto = $crypto;
+		$this->clientService = $clientService;
 	}
 
 	/**
@@ -133,15 +151,49 @@ class ProvisioningService {
 	public function provisionUserGroups(IUser $user, int $providerId, object $idTokenPayload): void {
 		$groupsAttribute = $this->providerService->getSetting($providerId, ProviderService::SETTING_MAPPING_GROUPS, 'groups');
 		$groupsData = $idTokenPayload->{$groupsAttribute} ?? null;
-
 		$event = new AttributeMappedEvent(ProviderService::SETTING_MAPPING_GROUPS, $idTokenPayload, json_encode($groupsData));
 		$this->eventDispatcher->dispatchTyped($event);
 		$this->logger->debug('Group mapping event dispatched');
-
 		if ($event->hasValue() && $event->getValue() !== null) {
 			$groups = json_decode($event->getValue());
 			$userGroups = $this->groupManager->getUserGroups($user);
 			$syncGroups = [];
+
+			$token = null;
+			$tenant = null;
+			if ($this->providerService->getSetting($providerId, ProviderService::SETTING_AZURE_GROUP_NAMES, '0') === '1') {
+				$url = $this->providerMapper->getProvider($providerId)->getDiscoveryEndpoint();
+				$tenant = explode('//', $url);
+				$tenant = count($tenant) === 1 ? $tenant[0] : $tenant[1];
+				$tenant = explode('/', $tenant);
+				if (count($tenant) === 1) {
+					$this->logger->error('Could not figure out the tenant id. (Is the discovery endpoint formatted properly?) Will not sync groups');
+					return;
+				}
+				$tenant = $tenant[1];
+
+				$client = $this->clientService->newClient();
+				$response = $client->post("https://login.microsoftonline.com/$tenant/oauth2/v2.0/token", [
+					'headers' => [ 'Accept' => 'application/json' ],
+					'form_params' => [
+						'client_id' => $this->providerMapper->getProvider($providerId)->getClientId(),
+						'scope' => 'https://graph.microsoft.com/.default',
+						'client_secret' => $this->crypto->decrypt($this->providerMapper->getProvider($providerId)->getClientSecret()),
+						'grant_type' => 'client_credentials'
+					]
+				]);
+				$res = $response->getBody();
+				if (!is_string($res)) {
+					$this->logger->error('Could not fetch Bearer token for Microsoft Graph. Will not sync groups');
+					return;
+				}
+				$res = json_decode($res, true);
+				if (empty($res)) {
+					$this->logger->error('Could not fetch Bearer token for Microsoft Graph. Will not sync groups');
+					return;
+				}
+				$token = $res['access_token'];
+			}
 
 			foreach ($groups as $k => $v) {
 				if (is_object($v)) {
@@ -156,9 +208,39 @@ class ProvisioningService {
 				} else {
 					continue;
 				}
+				if ($this->providerService->getSetting($providerId, ProviderService::SETTING_AZURE_GROUP_NAMES, '0') === '1' && is_string($v)) {
+					$client = $this->clientService->newClient();
+					$response = $client->get(
+						"https://graph.microsoft.com/v1.0/$tenant/groups/" . $v,
+						[ 'headers' => [ 'Accept' => 'application/json', 'Authorization' => "Bearer $token" ]]
+					);
+					$res = $response->getBody();
 
-				$group->gid = $this->idService->getId($providerId, $group->gid);
+					if (!is_string($res)) {
+						$this->logger->error('No response from Microsoft Graph while fetching group name. Will not sync the group ' . $v);
+						continue;
+					}
+					$res = json_decode($res, true); // https://learn.microsoft.com/en-us/graph/api/group-get?view=graph-rest-1.0&tabs=http#response-1
 
+					if (isset($res['error'])) {
+						$errorMessage = !empty($res['error']['message']) && is_string($res['error']['message']) ? $res['error']['message'] : '';
+						$this->logger->error('Error response from Microsoft Graph while fetching group name. Will not sync the group ' . $v . '. Graph said: ' . $errorMessage);
+						continue;
+					}
+
+					if (empty($res['displayName'])) {
+						$this->logger->error('Empty response from Microsoft Graph while fetching group name. Will not sync the group ' . $v);
+						continue;
+					}
+					$group = (object)['gid' => $res['displayName']];
+
+					if ($this->providerService->getSetting($providerId, ProviderService::SETTING_PROVIDER_BASED_ID, '0') === '1') {
+						$providerName = $this->providerMapper->getProvider($providerId)->getIdentifier();
+						$group->gid = $providerName . '-' . $group->gid;
+					}
+				} else {
+					$group->gid = $this->idService->getId($providerId, $group->gid);
+				}
 				$syncGroups[] = $group;
 			}
 
