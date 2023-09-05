@@ -1,5 +1,6 @@
 <?php
 
+use OCA\UserOIDC\Db\ProviderMapper;
 use OCA\UserOIDC\Db\User;
 use OCA\UserOIDC\Db\UserMapper;
 use OCA\UserOIDC\Service\LdapService;
@@ -8,10 +9,12 @@ use OCA\UserOIDC\Service\ProviderService;
 use OCA\UserOIDC\Service\ProvisioningService;
 use OCP\Accounts\IAccountManager;
 use OCP\EventDispatcher\IEventDispatcher;
+use OCP\Http\Client\IClientService;
 use OCP\IGroup;
 use OCP\IGroupManager;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Security\ICrypto;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -44,6 +47,12 @@ class ProvisioningServiceTest extends TestCase {
 	/** @var IAccountManager | MockObject */
 	private $accountManager;
 
+	 /** @var ICrypto | MockObject */
+	private $crypto;
+
+	/** @var IClientService | MockObject */
+	private $clientService;
+
 	public function setUp(): void {
 		parent::setUp();
 		$this->idService = $this->createMock(LocalIdService::class);
@@ -55,6 +64,9 @@ class ProvisioningServiceTest extends TestCase {
 		$this->eventDispatcher = $this->createMock(IEventDispatcher::class);
 		$this->logger = $this->createMock(LoggerInterface::class);
 		$this->accountManager = $this->createMock(IAccountManager::class);
+		$this->providerMapper = $this->createMock(ProviderMapper::class);
+		$this->crypto = $this->createMock(ICrypto::class);
+		$this->clientService = $this->createMock(IClientService::class);
 
 		$this->provisioningService = new ProvisioningService(
 			$this->idService,
@@ -65,6 +77,9 @@ class ProvisioningServiceTest extends TestCase {
 			$this->eventDispatcher,
 			$this->logger,
 			$this->accountManager,
+			$this->providerMapper,
+			$this->crypto,
+			$this->clientService
 		);
 	}
 

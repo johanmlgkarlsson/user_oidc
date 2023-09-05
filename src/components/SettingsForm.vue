@@ -275,6 +275,12 @@
 		<p class="settings-hint">
 			{{ t('user_oidc', 'Should the ID token be included as the id_token_hint GET parameter in the OpenID logout URL? Users are redirected to this URL after logging out of Nextcloud. Enabling this setting exposes the OIDC ID token to the user agent, which may not be necessary depending on the OIDC provider.') }}
 		</p>
+		<NcCheckboxRadioSwitch :checked.sync="localProvider.settings.azureGroupNames" wrapper-element="div">
+			{{ t('user_oidc', 'Fetch group names from Microsoft Graph') }}
+		</NcCheckboxRadioSwitch>
+		<p class="settings-hint">
+			{{ t('user_oidc', 'If the provider is Azure its possible to connect to Microsoft Graph to fetch group names') }}
+		</p>
 		<div class="provider-edit--footer">
 			<NcButton @click="$emit('cancel')">
 				{{ t('user_oidc', 'Cancel') }}
