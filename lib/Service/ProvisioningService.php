@@ -353,15 +353,22 @@ class ProvisioningService {
 				$tenant = $tenant[1];
 
 				$client = $this->clientService->newClient();
-				$response = $client->post("https://login.microsoftonline.com/$tenant/oauth2/v2.0/token", [
-					'headers' => [ 'Accept' => 'application/json' ],
-					'form_params' => [
-						'client_id' => $this->providerMapper->getProvider($providerId)->getClientId(),
-						'scope' => 'https://graph.microsoft.com/.default',
-						'client_secret' => $this->crypto->decrypt($this->providerMapper->getProvider($providerId)->getClientSecret()),
-						'grant_type' => 'client_credentials'
-					]
-				]);
+				try {
+					$response = $client->post("https://login.microsoftonline.com/$tenant/oauth2/v2.0/token", [
+						'headers' => [ 'Accept' => 'application/json' ],
+						'form_params' => [
+							'client_id' => $this->providerMapper->getProvider($providerId)->getClientId(),
+							'scope' => 'https://graph.microsoft.com/.default',
+							'client_secret' => $this->crypto->decrypt($this->providerMapper->getProvider($providerId)->getClientSecret()),
+							'grant_type' => 'client_credentials'
+						],
+						'http_errors' => false
+					]);
+				} catch (\Exception $e) {
+					$this->logger->error($e->getMessage());
+					return;
+				}
+
 				$res = $response->getBody();
 				if (!is_string($res)) {
 					$this->logger->error('Could not fetch Bearer token for Microsoft Graph. Will not sync groups');
@@ -390,10 +397,15 @@ class ProvisioningService {
 				}
 				if ($this->providerService->getSetting($providerId, ProviderService::SETTING_AZURE_GROUP_NAMES, '0') === '1' && is_string($v)) {
 					$client = $this->clientService->newClient();
-					$response = $client->get(
-						"https://graph.microsoft.com/v1.0/$tenant/groups/" . $v,
-						[ 'headers' => [ 'Accept' => 'application/json', 'Authorization' => "Bearer $token" ]]
-					);
+					try {
+						$response = $client->get(
+							"https://graph.microsoft.com/v1.0/$tenant/groups/" . $v,
+							[ 'headers' => [ 'Accept' => 'application/json', 'Authorization' => "Bearer $token" ], 'http_errors' => false ]
+						);
+					} catch (\Exception $e) {
+						$this->logger->error($e->getMessage());
+						continue;
+					}
 					$res = $response->getBody();
 
 					if (!is_string($res)) {
@@ -417,6 +429,15 @@ class ProvisioningService {
 					if ($this->providerService->getSetting($providerId, ProviderService::SETTING_PROVIDER_BASED_ID, '0') === '1') {
 						$providerName = $this->providerMapper->getProvider($providerId)->getIdentifier();
 						$group->gid = $providerName . '-' . $group->gid;
+					}
+					if (strlen($group->gid) > 64) {
+						$this->logger->warning('Group id ' . $group->gid . ' longer than supported. Group id truncated.');
+						$group->displayName = $group->gid;
+						$group->gid = substr($group->gid, 0, 64);
+						if (strlen($group->displayName) > 255) {
+							$this->logger->warning('Group name ' . $group->displayName . ' longer than supported. Group name truncated.');
+							$group->displayName = substr($group->displayName, 0, 255);
+						}
 					}
 				} else {
 					$group->gid = $this->idService->getId($providerId, $group->gid);
